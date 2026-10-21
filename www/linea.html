@@ -4,19 +4,43 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-  body{font-family:sans-serif;margin:0;background:#fff;color:#222}
-  h1{background:#c62828;color:#fff;margin:0;padding:20px;font-size:22px}
-  p{padding:16px;font-size:18px}
-  a{display:inline-block;margin:0 16px;padding:12px 20px;background:#c62828;color:#fff;border-radius:6px;text-decoration:none}
+ body{font-family:sans-serif;margin:0;background:#fff;color:#222}
+ h1{background:#c62828;color:#fff;margin:0;padding:20px;font-size:22px}
+ h2{margin:0;padding:12px 16px;font-size:17px;background:#fdecea;color:#b71c1c}
+ .txt{padding:14px 16px;font-size:16px;line-height:1.4}
+ .txt p{margin:0 0 8px}
+ ol{margin:6px 0 0;padding-left:26px}
+ li{margin-bottom:8px}
+ img{display:block;width:100%;height:auto;border-top:1px solid #ddd;border-bottom:1px solid #ddd}
+ .btns{padding:16px;display:flex;flex-direction:column;gap:12px}
+ .btn{display:block;text-align:center;padding:16px;background:#c62828;color:#fff;border-radius:8px;text-decoration:none;font-size:19px;font-weight:bold}
+ .btn.sec{background:#fff;color:#c62828;border:2px solid #c62828}
 </style>
 </head>
 <body>
-  <h1 id="titulo">Línea</h1>
-  <p>Aquí irá el checklist.</p>
-  <a href="index.html">← Volver</a>
-  <script>
-    var id = new URLSearchParams(location.search).get("id");
-    document.getElementById("titulo").textContent = "Línea " + id;
-  </script>
+ <h1 id="titulo">Línea</h1>
+ <div id="contenido"><p class="txt">Cargando…</p></div>
+ <script>
+ var id = new URLSearchParams(location.search).get("id");
+ document.getElementById("titulo").textContent = "Línea " + id;
+ var s = document.createElement("script");
+ s.src = id + ".js";
+ s.onload = function(){
+   var d = window.DATOS, h = "";
+   h += '<h2>Objetivo · ' + d.frecuencia + '</h2><div class="txt"><p>' + d.objetivo + '</p></div>';
+   h += '<h2>Procedimiento</h2><div class="txt"><p>' + d.procedimiento + '</p><ol type="a">';
+   d.criterios.forEach(function(c){ h += '<li><b>' + c[0] + ':</b> ' + c[1] + '</li>'; });
+   h += '</ol></div>';
+   h += '<img src="' + d.croquis + '" alt="Croquis de la línea">';
+   h += '<div class="btns"><a class="btn" href="revision.html?id=' + id + '">Empezar la revisión</a>';
+   h += '<a class="btn sec" href="index.html">← Volver</a></div>';
+   document.getElementById("contenido").innerHTML = h;
+ };
+ s.onerror = function(){
+   document.getElementById("contenido").innerHTML =
+     '<p class="txt">El checklist de esta línea aún no está disponible.</p><div class="btns"><a class="btn sec" href="index.html">← Volver</a></div>';
+ };
+ document.body.appendChild(s);
+ </script>
 </body>
 </html>

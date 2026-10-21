@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+ body{font-family:sans-serif;margin:0;background:#fff;color:#222}
+ header{position:sticky;top:0;background:#c62828;color:#fff;padding:14px 16px;z-index:5}
+ header h1{margin:0;font-size:20px}
+ header div{font-size:14px;margin-top:2px}
+ .item{padding:14px 16px;border-bottom:8px solid #f1f1f1}
+ .item h3{margin:0 0 4px;font-size:16px;color:#b71c1c}
+ .item p{margin:0 0 10px;font-size:15px;font-weight:bold}
+ .item img{display:block;width:100%;max-width:420px;height:auto;margin:0 auto 12px;border-radius:6px}
+ .op{display:flex;gap:8px}
+ .op label{flex:1}
+ .op input{position:absolute;opacity:0;pointer-events:none}
+ .op span{display:block;text-align:center;padding:12px 4px;border:2px solid #bbb;border-radius:8px;font-size:14px;font-weight:bold;color:#555;background:#fff}
+ .op input:checked + span.c{background:#2e7d32;border-color:#2e7d32;color:#fff}
+ .op input:checked + span.i{background:#c62828;border-color:#c62828;color:#fff}
+ .op input:checked + span.s{background:#f9a825;border-color:#f9a825;color:#222}
+ .pie{padding:16px;display:flex;flex-direction:column;gap:12px}
+ .btn{display:block;text-align:center;padding:14px;border:2px solid #c62828;color:#c62828;background:#fff;border-radius:8px;text-decoration:none;font-size:17px;font-weight:bold}
+</style>
+</head>
+<body>
+ <header><h1 id="titulo">Revisión</h1><div id="cont"></div></header>
+ <div id="lista"></div>
+ <div class="pie"><a class="btn" id="volver" href="index.html">← Volver</a></div>
+ <script>
+ var id = new URLSearchParams(location.search).get("id");
+ var KEY = "rev_" + id, estado = {};
+ try { estado = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch(e){}
+ var s = document.createElement("script");
+ s.src = id + ".js";
+ s.onload = function(){
+   var d = window.DATOS, h = "";
+   document.getElementById("titulo").textContent = "Revisión " + id;
+   document.getElementById("volver").href = "linea.html?id=" + id;
+   d.items.forEach(function(it){
+     var nm = "r" + it.n, v = estado[it.n];
+     function op(val, cls, txt){
+       return '<label><input type="radio" name="' + nm + '" value="' + val + '"' + (v===val?' checked':'') + '><span class="' + cls + '">' + txt + '</span></label>';
+     }
+     h += '<div class="item"><h3>' + it.n + '</h3><p>' + it.t + '</p><img src="' + it.img + '" alt="">' +
+          '<div class="op" data-n="' + it.n + '">' + op("correcto","c","Correcto") + op("incorrecto","i","Incorrecto") + op("seguimiento","s","En seguimiento") + '</div></div>';
+   });
+   document.getElementById("lista").innerHTML = h;
+   function contar(){ document.getElementById("cont").textContent = Object.keys(estado).length + " de " + d.items.length + " revisados"; }
+   contar();
+   document.getElementById("lista").addEventListener("change", function(e){
+     if (e.target.type !== "radio") return;
+     estado[e.target.closest(".op").getAttribute("data-n")] = e.target.value;
+     try { localStorage.setItem(KEY, JSON.stringify(estado)); } catch(x){}
+     contar();
+   });
+ };
+ s.onerror = function(){ document.getElementById("lista").innerHTML = '<p style="padding:16px">Checklist no disponible.</p>'; };
+ document.body.appendChild(s);
+ </script>
+</body>
+</html>
