@@ -90,6 +90,102 @@
    window.DATOS.items.forEach(function(it){ pintaFoto(it.n); });
    contar(); window.scrollTo(0, 0);
  }
+ var _mc = null;
+ function medir(t, size, bold){
+   if (!_mc) _mc = document.createElement("canvas").getContext("2d");
+   _mc.font = (bold ? "bold " : "") + size + "px Helvetica, Arial, sans-serif";
+   return _mc.measureText(t).width * 1.05;
+ }
+ function limpia(t){ return String(t).replace(/[–—]/g, "-").replace(/[“”]/g, '"').replace(/[‘’]/g, "'").replace(/…/g, "..."); }
+ function strBytes(s){ var b = new Uint8Array(s.length); for (var i = 0; i < s.length; i++){ var c = s.charCodeAt(i); b[i] = c < 256 ? c : 63; } return b; }
+ function pdfEsc(s){ return s.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)"); }
+ function dataToBytes(u){ var bin = atob(u.split(",")[1]), b = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i); return b; }
+ function dimImg(u){ return new Promise(function(res){ var im = new Image(); im.onload = function(){ res({w: im.naturalWidth, h: im.naturalHeight}); }; im.onerror = function(){ res(null); }; im.src = u; }); }
+ function partir(t, size, bold, max){
+   var ws = t.split(" "), ls = [], cur = "";
+   ws.forEach(function(w){
+     var test = cur ? cur + " " + w : w;
+     if (cur && medir(test, size, bold) > max) { ls.push(cur); cur = w; } else cur = test;
+   });
+   if (cur) ls.push(cur);
+   return ls;
+ }
+ // puntos: [{cab:"11.5 TEXTO - INCORRECTO", foto:dataURL|null, color:"r g b"}]
+ async function crearPDF(titulo, subtitulo, resumen, puntos){
+   var PW = 595, PH = 842, M = 40, maxW = PW - 2 * M;
+   var pages = [[]], y = PH - 50 - 24, imgs = [];
+   function nueva(){ pages.push([]); y = PH - M; }
+   function cur(){ return pages[pages.length - 1]; }
+   function texto(t, size, bold, rgb){
+     var lh = size * 1.3;
+     partir(limpia(t), size, bold, maxW).forEach(function(l){
+       if (y - lh < M) nueva();
+       y -= lh;
+       cur().push("BT /" + (bold ? "F2" : "F1") + " " + size + " Tf " + rgb + " rg " + M + " " + y.toFixed(1) + " Td (" + pdfEsc(l) + ") Tj ET");
+     });
+   }
+   function espacio(h){ y -= h; }
+   // cabecera roja en la primera página
+   pages[0].push("0.776 0.157 0.157 rg 0 " + (PH - 50) + " " + PW + " 50 re f");
+   pages[0].push("BT /F2 18 Tf 1 1 1 rg " + M + " " + (PH - 32) + " Td (" + pdfEsc(limpia(titulo)) + ") Tj ET");
+   texto(subtitulo, 11, false, "0.2 0.2 0.2");
+   espacio(8);
+   texto("Resumen", 14, true, "0.72 0.11 0.11");
+   resumen.forEach(function(r){ texto(r, 12, false, "0 0 0"); });
+   espacio(12);
+   texto("Puntos incorrectos o en seguimiento", 14, true, "0.72 0.11 0.11");
+   espacio(4);
+   if (!puntos.length) texto("Ninguno. Sin incidencias.", 12, false, "0 0 0");
+   for (var k = 0; k < puntos.length; k++){
+     var p = puntos[k];
+     espacio(8);
+     // evitar cabecera huérfana al final de página
+     if (y < M + 120) nueva();
+     texto(p.cab, 12, true, p.color);
+     if (p.foto){
+       var dm = await dimImg(p.foto);
+       if (dm){
+         var sc = Math.min(300 / dm.w, 260 / dm.h), dw = dm.w * sc, dh = dm.h * sc;
+         if (y - dh - 6 < M) nueva();
+         y -= dh + 6;
+         imgs.push({bytes: dataToBytes(p.foto), w: dm.w, h: dm.h});
+         cur().push("q " + dw.toFixed(1) + " 0 0 " + dh.toFixed(1) + " " + M + " " + y.toFixed(1) + " cm /Im" + (imgs.length - 1) + " Do Q");
+       }
+     }
+   }
+   // ensamblar PDF
+   var chunks = [], len = 0, offs = {};
+   function put(b){ if (typeof b === "string") b = strBytes(b); chunks.push(b); len += b.length; }
+   function obj(id, dict, stream){
+     offs[id] = len;
+     if (stream){ put(id + " 0 obj\n<< " + dict + " /Length " + stream.length + " >>\nstream\n"); put(stream); put("\nendstream\nendobj\n"); }
+     else put(id + " 0 obj\n" + dict + "\nendobj\n");
+   }
+   var np = pages.length, base = 6, imgBase = base + 2 * np, total = imgBase + imgs.length;
+   put("%PDF-1.4\n");
+   obj(1, "<< /Type /Catalog /Pages 2 0 R >>");
+   var kids = []; for (var i = 0; i < np; i++) kids.push((base + 2 * i) + " 0 R");
+   obj(2, "<< /Type /Pages /Kids [" + kids.join(" ") + "] /Count " + np + " >>");
+   obj(3, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
+   obj(4, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
+   var xo = ""; imgs.forEach(function(_, j){ xo += "/Im" + j + " " + (imgBase + j) + " 0 R "; });
+   obj(5, "<< /Font << /F1 3 0 R /F2 4 0 R >> /XObject << " + xo + ">> >>");
+   for (var i2 = 0; i2 < np; i2++){
+     obj(base + 2 * i2, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + PW + " " + PH + "] /Resources 5 0 R /Contents " + (base + 2 * i2 + 1) + " 0 R >>");
+     obj(base + 2 * i2 + 1, "", strBytes(pages[i2].join("\n")));
+   }
+   imgs.forEach(function(im, j){
+     obj(imgBase + j, "/Type /XObject /Subtype /Image /Width " + im.w + " /Height " + im.h + " /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode", im.bytes);
+   });
+   var xref = len;
+   put("xref\n0 " + total + "\n0000000000 65535 f \n");
+   for (var id = 1; id < total; id++) put(("0000000000" + offs[id]).slice(-10) + " 00000 n \n");
+   put("trailer\n<< /Size " + total + " /Root 1 0 R >>\nstartxref\n" + xref + "\n%%EOF\n");
+   var out = new Uint8Array(len), pos = 0;
+   chunks.forEach(function(c){ out.set(c, pos); pos += c.length; });
+   return out;
+ }
+ function bytesToB64(u8){ var s = "", n = 0x8000; for (var i = 0; i < u8.length; i += n) s += String.fromCharCode.apply(null, u8.subarray(i, i + n)); return btoa(s); }
  var s = document.createElement("script");
  s.src = id + ".js";
  s.onload = function(){
@@ -143,46 +239,45 @@
    document.getElementById("enviar").addEventListener("click", async function(ev){
      ev.preventDefault();
      var tot = d.items.length, sin = tot - Object.keys(estado).length;
-     var msg = sin > 0 ? "Quedan " + sin + " puntos sin revisar. ¿Enviar el informe y reiniciar el checklist?" : "¿Enviar el informe y reiniciar el checklist?";
+     var msg = sin > 0 ? "Quedan " + sin + " puntos sin revisar. ¿Generar el informe en PDF y reiniciar el checklist?" : "¿Generar el informe en PDF y reiniciar el checklist?";
      if (!confirm(msg)) return;
-     var nom = {correcto:"CORRECTO", incorrecto:"INCORRECTO", seguimiento:"EN SEGUIMIENTO"};
-     var c = 0, i = 0, sg = 0, lineas = [], adj = [];
+     var btn = document.getElementById("enviar");
+     btn.textContent = "Generando PDF...";
+     var c = 0, i = 0, sg = 0, puntos = [];
      d.items.forEach(function(it){
        var v = estado[it.n];
        if (v === "correcto") c++; else if (v === "incorrecto") i++; else if (v === "seguimiento") sg++;
        if (v === "incorrecto" || v === "seguimiento") {
-         var l = it.n + " " + it.t + ": " + nom[v];
-         if (fotos[it.n]) {
-           var nombre = id + "_punto_" + it.n.replace(".", "_") + ".jpg";
-           adj.push({n: it.n, nombre: nombre});
-           l += " (foto adjunta: " + nombre + ")";
-         }
-         lineas.push(l);
+         puntos.push({
+           cab: it.n + " " + it.t + " - " + (v === "incorrecto" ? "INCORRECTO" : "EN SEGUIMIENTO"),
+           foto: fotos[it.n] || null,
+           color: v === "incorrecto" ? "0.72 0.11 0.11" : "0.7 0.45 0"
+         });
        }
      });
-     var cuerpo = "Revisión de astillables - Línea " + id + "\r\nFecha: " + new Date().toLocaleString("es-ES") +
-       "\r\n\r\nResumen:\r\nCorrectos: " + c + "\r\nIncorrectos: " + i + "\r\nEn seguimiento: " + sg + "\r\nSin revisar: " + sin +
-       "\r\n\r\nPuntos incorrectos o en seguimiento:\r\n" + (lineas.length ? lineas.join("\r\n") : "Ninguno");
+     var ahora = new Date();
+     var p2 = function(x){ return ("0" + x).slice(-2); };
+     var sello = ahora.getFullYear() + "-" + p2(ahora.getMonth() + 1) + "-" + p2(ahora.getDate()) + "_" + p2(ahora.getHours()) + p2(ahora.getMinutes());
+     var nombre = "Revision_" + id + "_" + sello + ".pdf";
      var asunto = "Revisión de astillables - " + id;
      var P = (window.Capacitor && window.Capacitor.Plugins) || {};
      try {
+       var bytes = await crearPDF("Revisión de astillables - Línea " + id, "Fecha: " + ahora.toLocaleString("es-ES"),
+         ["Correctos: " + c, "Incorrectos: " + i, "En seguimiento: " + sg, "Sin revisar: " + sin], puntos);
        if (P.Share && P.Filesystem) {
-         var uris = [];
-         for (var k = 0; k < adj.length; k++) {
-           var r = await P.Filesystem.writeFile({ path: adj[k].nombre, data: fotos[adj[k].n].split(",")[1], directory: "CACHE" });
-           uris.push(r.uri);
-         }
-         var op = { title: asunto, text: cuerpo, dialogTitle: "Enviar informe" };
-         if (uris.length) op.files = uris;
-         await P.Share.share(op);
+         var r = await P.Filesystem.writeFile({ path: nombre, data: bytesToB64(bytes), directory: "CACHE" });
+         await P.Share.share({ title: asunto, text: asunto, files: [r.uri], dialogTitle: "Enviar informe" });
        } else {
-         window.location.href = "mailto:?subject=" + encodeURIComponent(asunto) + "&body=" + encodeURIComponent(cuerpo);
+         var a = document.createElement("a");
+         a.href = URL.createObjectURL(new Blob([bytes], {type: "application/pdf"}));
+         a.download = nombre; document.body.appendChild(a); a.click(); a.remove();
        }
        reiniciar();
      } catch (err) {
        var m = String((err && err.message) || err);
-       if (!/cancel/i.test(m)) alert("No se pudo enviar el informe: " + m);
+       if (!/cancel/i.test(m)) alert("No se pudo generar o enviar el informe: " + m);
      }
+     btn.textContent = "Enviar informe";
    });
  };
  s.onerror = function(){ document.getElementById("lista").innerHTML = '<p style="padding:16px">Checklist no disponible.</p>'; };
