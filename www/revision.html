@@ -20,13 +20,14 @@
  .op input:checked + span.i{background:#c62828;border-color:#c62828;color:#fff}
  .op input:checked + span.s{background:#f9a825;border-color:#f9a825;color:#222}
  .pie{padding:16px;display:flex;flex-direction:column;gap:12px}
+ .btn.env{background:#c62828;color:#fff}
  .btn{display:block;text-align:center;padding:14px;border:2px solid #c62828;color:#c62828;background:#fff;border-radius:8px;text-decoration:none;font-size:17px;font-weight:bold}
 </style>
 </head>
 <body>
  <header><h1 id="titulo">Revisión</h1><div id="cont"></div></header>
  <div id="lista"></div>
- <div class="pie"><a class="btn" id="volver" href="index.html">← Volver</a></div>
+ <div class="pie"><a class="btn env" id="enviar" href="#">Enviar informe</a><a class="btn" id="volver" href="index.html">← Volver</a></div>
  <script>
  var id = new URLSearchParams(location.search).get("id");
  var KEY = "rev_" + id, estado = {};
@@ -53,6 +54,33 @@
      estado[e.target.closest(".op").getAttribute("data-n")] = e.target.value;
      try { localStorage.setItem(KEY, JSON.stringify(estado)); } catch(x){}
      contar();
+   });
+
+   document.getElementById("enviar").addEventListener("click", function(ev){
+     ev.preventDefault();
+     var tot = d.items.length, sin = tot - Object.keys(estado).length;
+     var msg = sin > 0 ? "Quedan " + sin + " puntos sin revisar. ¿Enviar el informe y reiniciar el checklist?" : "¿Enviar el informe y reiniciar el checklist?";
+     if (!confirm(msg)) return;
+     var nom = {correcto:"CORRECTO", incorrecto:"INCORRECTO", seguimiento:"EN SEGUIMIENTO"};
+     var c = 0, i = 0, sg = 0, lineas = [];
+     d.items.forEach(function(it){
+       var v = estado[it.n];
+       if (v === "correcto") c++; else if (v === "incorrecto") i++; else if (v === "seguimiento") sg++;
+       if (v === "incorrecto" || v === "seguimiento") lineas.push(it.n + " " + it.t + ": " + nom[v]);
+     });
+     var cuerpo = "Revisión de astillables - Línea " + id + "\r\nFecha: " + new Date().toLocaleString("es-ES") +
+       "\r\n\r\nResumen:\r\nCorrectos: " + c + "\r\nIncorrectos: " + i + "\r\nEn seguimiento: " + sg + "\r\nSin revisar: " + sin +
+       "\r\n\r\nPuntos incorrectos o en seguimiento:\r\n" + (lineas.length ? lineas.join("\r\n") : "Ninguno");
+     var url = "mailto:jrmiguezo@damm.com,ymorelm@damm.com?subject=" + encodeURIComponent("Revisión de astillables - " + id) + "&body=" + encodeURIComponent(cuerpo);
+     window.location.href = url;
+     setTimeout(function(){
+       estado = {};
+       try { localStorage.removeItem(KEY); } catch(x){}
+       var rs = document.querySelectorAll("#lista input[type=radio]");
+       for (var k = 0; k < rs.length; k++) rs[k].checked = false;
+       contar();
+       window.scrollTo(0, 0);
+     }, 600);
    });
  };
  s.onerror = function(){ document.getElementById("lista").innerHTML = '<p style="padding:16px">Checklist no disponible.</p>'; };
