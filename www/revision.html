@@ -11,7 +11,7 @@
  .item{padding:14px 16px;border-bottom:8px solid #f1f1f1}
  .item h3{margin:0 0 4px;font-size:16px;color:#b71c1c}
  .item p{margin:0 0 10px;font-size:15px;font-weight:bold}
- .item img{display:block;width:100%;max-width:420px;height:auto;margin:0 auto 12px;border-radius:6px}
+ .item img.ref{display:block;width:100%;max-width:420px;height:auto;margin:0 auto 12px;border-radius:6px}
  .op{display:flex;gap:8px}
  .op label{flex:1}
  .op input{position:absolute;opacity:0;pointer-events:none}
@@ -19,19 +19,77 @@
  .op input:checked + span.c{background:#2e7d32;border-color:#2e7d32;color:#fff}
  .op input:checked + span.i{background:#c62828;border-color:#c62828;color:#fff}
  .op input:checked + span.s{background:#f9a825;border-color:#f9a825;color:#222}
+ .foto{margin-top:12px}
+ .foto img{display:block;width:100%;max-width:420px;margin:0 auto 8px;border-radius:6px;border:2px solid #c62828}
+ .fb{display:flex;gap:8px}
+ .fb button{flex:1;padding:12px 6px;font-size:15px;font-weight:bold;border:2px solid #c62828;background:#fff;color:#c62828;border-radius:8px}
  .pie{padding:16px;display:flex;flex-direction:column;gap:12px}
- .btn.env{background:#c62828;color:#fff}
  .btn{display:block;text-align:center;padding:14px;border:2px solid #c62828;color:#c62828;background:#fff;border-radius:8px;text-decoration:none;font-size:17px;font-weight:bold}
+ .btn.env{background:#c62828;color:#fff}
+ #modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:20;align-items:center;justify-content:center;padding:20px}
+ #modal .caja{background:#fff;border-radius:12px;padding:20px;width:100%;max-width:360px}
+ #modal h2{margin:0 0 8px;font-size:20px;color:#b71c1c}
+ #modal p{margin:0 0 16px;font-size:16px}
+ #modal button{display:block;width:100%;padding:14px;font-size:17px;font-weight:bold;border-radius:8px;margin-top:10px;border:2px solid #c62828}
+ #mCap{background:#c62828;color:#fff}
+ #mNo{background:#fff;color:#c62828}
 </style>
 </head>
 <body>
  <header><h1 id="titulo">Revisión</h1><div id="cont"></div></header>
  <div id="lista"></div>
  <div class="pie"><a class="btn env" id="enviar" href="#">Enviar informe</a><a class="btn" id="volver" href="index.html">← Volver</a></div>
+ <input type="file" id="cam" accept="image/*" capture="environment" style="display:none">
+ <div id="modal"><div class="caja"><h2>Capturar fotografía</h2><p id="mTxt"></p>
+  <button id="mCap">Capturar fotografía</button><button id="mNo">Ahora no</button></div></div>
  <script>
  var id = new URLSearchParams(location.search).get("id");
- var KEY = "rev_" + id, estado = {};
+ var KEY = "rev_" + id, KF = "revf_" + id, estado = {}, fotos = {}, pend = null;
  try { estado = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch(e){}
+ try { fotos = JSON.parse(localStorage.getItem(KF) || "{}"); } catch(e){}
+ function guardar(){ try { localStorage.setItem(KEY, JSON.stringify(estado)); } catch(x){} }
+ function guardarFotos(){ try { localStorage.setItem(KF, JSON.stringify(fotos)); return true; } catch(x){ return false; } }
+ function sid(n){ return "f" + n.replace(".", "_"); }
+ function contar(){ document.getElementById("cont").textContent = Object.keys(estado).length + " de " + window.DATOS.items.length + " revisados"; }
+ function pintaFoto(n){
+   var box = document.getElementById(sid(n)), v = estado[n], h = "";
+   if (v === "incorrecto" || v === "seguimiento") {
+     if (fotos[n]) h = '<img src="' + fotos[n] + '" alt="Foto"><div class="fb"><button data-a="foto" data-n="' + n + '">Repetir foto</button><button data-a="quitar" data-n="' + n + '">Quitar foto</button></div>';
+     else h = '<div class="fb"><button data-a="foto" data-n="' + n + '">Capturar fotografía</button></div>';
+   }
+   box.innerHTML = h;
+ }
+ function abrirModal(n, v){
+   pend = n;
+   document.getElementById("mTxt").textContent = "Punto " + n + " marcado como " + (v === "incorrecto" ? "incorrecto" : "en seguimiento") + ". ¿Quieres adjuntar una foto?";
+   document.getElementById("modal").style.display = "flex";
+ }
+ function cerrarModal(){ document.getElementById("modal").style.display = "none"; }
+ function reducir(file, cb){
+   var r = new FileReader();
+   r.onload = function(){
+     var im = new Image();
+     im.onload = function(){
+       var k = Math.min(1, 1280 / Math.max(im.width, im.height));
+       var c = document.createElement("canvas");
+       c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
+       c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
+       cb(c.toDataURL("image/jpeg", 0.7));
+     };
+     im.onerror = function(){ cb(null); };
+     im.src = r.result;
+   };
+   r.onerror = function(){ cb(null); };
+   r.readAsDataURL(file);
+ }
+ function reiniciar(){
+   estado = {}; fotos = {};
+   try { localStorage.removeItem(KEY); localStorage.removeItem(KF); } catch(x){}
+   var rs = document.querySelectorAll("#lista input[type=radio]");
+   for (var k = 0; k < rs.length; k++) rs[k].checked = false;
+   window.DATOS.items.forEach(function(it){ pintaFoto(it.n); });
+   contar(); window.scrollTo(0, 0);
+ }
  var s = document.createElement("script");
  s.src = id + ".js";
  s.onload = function(){
@@ -43,44 +101,88 @@
      function op(val, cls, txt){
        return '<label><input type="radio" name="' + nm + '" value="' + val + '"' + (v===val?' checked':'') + '><span class="' + cls + '">' + txt + '</span></label>';
      }
-     h += '<div class="item"><h3>' + it.n + '</h3><p>' + it.t + '</p><img src="' + it.img + '" alt="">' +
-          '<div class="op" data-n="' + it.n + '">' + op("correcto","c","Correcto") + op("incorrecto","i","Incorrecto") + op("seguimiento","s","En seguimiento") + '</div></div>';
+     h += '<div class="item"><h3>' + it.n + '</h3><p>' + it.t + '</p><img class="ref" src="' + it.img + '" alt="">' +
+          '<div class="op" data-n="' + it.n + '">' + op("correcto","c","Correcto") + op("incorrecto","i","Incorrecto") + op("seguimiento","s","En seguimiento") + '</div>' +
+          '<div class="foto" id="' + sid(it.n) + '"></div></div>';
    });
    document.getElementById("lista").innerHTML = h;
-   function contar(){ document.getElementById("cont").textContent = Object.keys(estado).length + " de " + d.items.length + " revisados"; }
+   d.items.forEach(function(it){ pintaFoto(it.n); });
    contar();
+
    document.getElementById("lista").addEventListener("change", function(e){
      if (e.target.type !== "radio") return;
-     estado[e.target.closest(".op").getAttribute("data-n")] = e.target.value;
-     try { localStorage.setItem(KEY, JSON.stringify(estado)); } catch(x){}
-     contar();
+     var n = e.target.closest(".op").getAttribute("data-n"), v = e.target.value;
+     estado[n] = v; guardar();
+     if (v === "correcto" && fotos[n]) { delete fotos[n]; guardarFotos(); }
+     pintaFoto(n); contar();
+     if ((v === "incorrecto" || v === "seguimiento") && !fotos[n]) abrirModal(n, v);
+   });
+   document.getElementById("lista").addEventListener("click", function(e){
+     var a = e.target.getAttribute && e.target.getAttribute("data-a");
+     if (!a) return;
+     var n = e.target.getAttribute("data-n");
+     if (a === "foto") { pend = n; document.getElementById("cam").click(); }
+     if (a === "quitar") { delete fotos[n]; guardarFotos(); pintaFoto(n); }
+   });
+   document.getElementById("mCap").addEventListener("click", function(){
+     document.getElementById("cam").click(); cerrarModal();
+   });
+   document.getElementById("mNo").addEventListener("click", cerrarModal);
+   document.getElementById("cam").addEventListener("change", function(e){
+     var f = e.target.files && e.target.files[0], n = pend;
+     if (!f || !n) return;
+     reducir(f, function(data){
+       if (!data) { alert("No se pudo leer la foto."); return; }
+       fotos[n] = data;
+       if (!guardarFotos()) { delete fotos[n]; alert("No hay espacio para guardar más fotos en la app."); }
+       pintaFoto(n);
+     });
+     e.target.value = "";
    });
 
-   document.getElementById("enviar").addEventListener("click", function(ev){
+   document.getElementById("enviar").addEventListener("click", async function(ev){
      ev.preventDefault();
      var tot = d.items.length, sin = tot - Object.keys(estado).length;
      var msg = sin > 0 ? "Quedan " + sin + " puntos sin revisar. ¿Enviar el informe y reiniciar el checklist?" : "¿Enviar el informe y reiniciar el checklist?";
      if (!confirm(msg)) return;
      var nom = {correcto:"CORRECTO", incorrecto:"INCORRECTO", seguimiento:"EN SEGUIMIENTO"};
-     var c = 0, i = 0, sg = 0, lineas = [];
+     var c = 0, i = 0, sg = 0, lineas = [], adj = [];
      d.items.forEach(function(it){
        var v = estado[it.n];
        if (v === "correcto") c++; else if (v === "incorrecto") i++; else if (v === "seguimiento") sg++;
-       if (v === "incorrecto" || v === "seguimiento") lineas.push(it.n + " " + it.t + ": " + nom[v]);
+       if (v === "incorrecto" || v === "seguimiento") {
+         var l = it.n + " " + it.t + ": " + nom[v];
+         if (fotos[it.n]) {
+           var nombre = id + "_punto_" + it.n.replace(".", "_") + ".jpg";
+           adj.push({n: it.n, nombre: nombre});
+           l += " (foto adjunta: " + nombre + ")";
+         }
+         lineas.push(l);
+       }
      });
      var cuerpo = "Revisión de astillables - Línea " + id + "\r\nFecha: " + new Date().toLocaleString("es-ES") +
        "\r\n\r\nResumen:\r\nCorrectos: " + c + "\r\nIncorrectos: " + i + "\r\nEn seguimiento: " + sg + "\r\nSin revisar: " + sin +
        "\r\n\r\nPuntos incorrectos o en seguimiento:\r\n" + (lineas.length ? lineas.join("\r\n") : "Ninguno");
-     var url = "mailto:jrmiguezo@damm.com,ymorelm@damm.com?subject=" + encodeURIComponent("Revisión de astillables - " + id) + "&body=" + encodeURIComponent(cuerpo);
-     window.location.href = url;
-     setTimeout(function(){
-       estado = {};
-       try { localStorage.removeItem(KEY); } catch(x){}
-       var rs = document.querySelectorAll("#lista input[type=radio]");
-       for (var k = 0; k < rs.length; k++) rs[k].checked = false;
-       contar();
-       window.scrollTo(0, 0);
-     }, 600);
+     var asunto = "Revisión de astillables - " + id;
+     var P = (window.Capacitor && window.Capacitor.Plugins) || {};
+     try {
+       if (P.Share && P.Filesystem) {
+         var uris = [];
+         for (var k = 0; k < adj.length; k++) {
+           var r = await P.Filesystem.writeFile({ path: adj[k].nombre, data: fotos[adj[k].n].split(",")[1], directory: "CACHE" });
+           uris.push(r.uri);
+         }
+         var op = { title: asunto, text: cuerpo, dialogTitle: "Enviar informe" };
+         if (uris.length) op.files = uris;
+         await P.Share.share(op);
+       } else {
+         window.location.href = "mailto:?subject=" + encodeURIComponent(asunto) + "&body=" + encodeURIComponent(cuerpo);
+       }
+       reiniciar();
+     } catch (err) {
+       var m = String((err && err.message) || err);
+       if (!/cancel/i.test(m)) alert("No se pudo enviar el informe: " + m);
+     }
    });
  };
  s.onerror = function(){ document.getElementById("lista").innerHTML = '<p style="padding:16px">Checklist no disponible.</p>'; };
