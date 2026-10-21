@@ -14,9 +14,26 @@ jobs:
           java-version: 17
       - run: npm install
       - run: npx cap add android
+      - name: Crear icono Rev Ast
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick fonts-dejavu-core
+          RES=android/app/src/main/res
+          rm -rf $RES/mipmap-anydpi-v26
+          convert -size 512x512 xc:'#c62828' -fill white \
+            -font DejaVu-Sans-Bold -pointsize 190 -gravity center \
+            -annotate 0 "Rev\nAst" /tmp/icon.png
+          for d in mdpi:48 hdpi:72 xhdpi:96 xxhdpi:144 xxxhdpi:192; do
+            n=${d%%:*}; s=${d##*:}
+            mkdir -p $RES/mipmap-$n
+            convert /tmp/icon.png -resize ${s}x${s} $RES/mipmap-$n/ic_launcher.png
+            cp $RES/mipmap-$n/ic_launcher.png $RES/mipmap-$n/ic_launcher_round.png
+            cp $RES/mipmap-$n/ic_launcher.png $RES/mipmap-$n/ic_launcher_foreground.png
+          done
       - run: npx cap sync android
       - run: cd android && ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
         with:
           name: revision-astillables-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+
