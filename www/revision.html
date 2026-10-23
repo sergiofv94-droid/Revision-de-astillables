@@ -21,7 +21,7 @@
  .op input:checked + span.s{background:#f9a825;border-color:#f9a825;color:#222}
  .foto{margin-top:12px}
  .foto img{display:block;width:100%;max-width:420px;margin:0 auto 8px;border-radius:6px;border:2px solid #c62828}
- .fb{display:flex;gap:8px}
+ .fb{display:flex;gap:8px;margin-bottom:10px}
  .fb button{flex:1;padding:12px 6px;font-size:15px;font-weight:bold;border:2px solid #c62828;background:#fff;color:#c62828;border-radius:8px}
  .pie{padding:16px;display:flex;flex-direction:column;gap:12px}
  .btn{display:block;text-align:center;padding:14px;border:2px solid #c62828;color:#c62828;background:#fff;border-radius:8px;text-decoration:none;font-size:17px;font-weight:bold}
@@ -51,11 +51,15 @@
  function guardarFotos(){ try { localStorage.setItem(KF, JSON.stringify(fotos)); return true; } catch(x){ return false; } }
  function sid(n){ return "f" + n.replace(".", "_"); }
  function contar(){ document.getElementById("cont").textContent = Object.keys(estado).length + " de " + window.DATOS.items.length + " revisados"; }
+ var MAXF = 10;
+ function lista(n){ var f = fotos[n]; if (!f) return []; return typeof f === "string" ? [f] : f; }
  function pintaFoto(n){
-   var box = document.getElementById(sid(n)), v = estado[n], h = "";
+   var box = document.getElementById(sid(n)), v = estado[n], h = "", fs = lista(n);
    if (v === "incorrecto" || v === "seguimiento") {
-     if (fotos[n]) h = '<img src="' + fotos[n] + '" alt="Foto"><div class="fb"><button data-a="foto" data-n="' + n + '">Repetir foto</button><button data-a="quitar" data-n="' + n + '">Quitar foto</button></div>';
-     else h = '<div class="fb"><button data-a="foto" data-n="' + n + '">Capturar fotografía</button></div>';
+     fs.forEach(function(u, k){
+       h += '<img src="' + u + '" alt="Foto"><div class="fb"><button data-a="quitar" data-n="' + n + '" data-i="' + k + '">Quitar foto ' + (k + 1) + '</button></div>';
+     });
+     if (fs.length < MAXF) h += '<div class="fb"><button data-a="foto" data-n="' + n + '">' + (fs.length ? "Añadir otra foto" : "Capturar fotografía") + '</button></div>';
    }
    box.innerHTML = h;
  }
@@ -110,7 +114,7 @@
    if (cur) ls.push(cur);
    return ls;
  }
- // puntos: [{cab:"11.5 TEXTO - INCORRECTO", foto:dataURL|null, color:"r g b"}]
+ // puntos: [{cab:"11.5 TEXTO - INCORRECTO", fotos:[dataURL,...], color:"r g b"}]
  async function crearPDF(titulo, subtitulo, resumen, puntos){
    var PW = 595, PH = 842, M = 40, maxW = PW - 2 * M;
    var pages = [[]], y = PH - 50 - 24, imgs = [];
@@ -142,13 +146,14 @@
      // evitar cabecera huérfana al final de página
      if (y < M + 120) nueva();
      texto(p.cab, 12, true, p.color);
-     if (p.foto){
-       var dm = await dimImg(p.foto);
+     var fl = p.fotos || [];
+     for (var q = 0; q < fl.length; q++){
+       var dm = await dimImg(fl[q]);
        if (dm){
          var sc = Math.min(300 / dm.w, 260 / dm.h), dw = dm.w * sc, dh = dm.h * sc;
          if (y - dh - 6 < M) nueva();
          y -= dh + 6;
-         imgs.push({bytes: dataToBytes(p.foto), w: dm.w, h: dm.h});
+         imgs.push({bytes: dataToBytes(fl[q]), w: dm.w, h: dm.h});
          cur().push("q " + dw.toFixed(1) + " 0 0 " + dh.toFixed(1) + " " + M + " " + y.toFixed(1) + " cm /Im" + (imgs.length - 1) + " Do Q");
        }
      }
@@ -211,14 +216,18 @@
      estado[n] = v; guardar();
      if (v === "correcto" && fotos[n]) { delete fotos[n]; guardarFotos(); }
      pintaFoto(n); contar();
-     if ((v === "incorrecto" || v === "seguimiento") && !fotos[n]) abrirModal(n, v);
+     if ((v === "incorrecto" || v === "seguimiento") && !lista(n).length) abrirModal(n, v);
    });
    document.getElementById("lista").addEventListener("click", function(e){
      var a = e.target.getAttribute && e.target.getAttribute("data-a");
      if (!a) return;
      var n = e.target.getAttribute("data-n");
      if (a === "foto") { pend = n; document.getElementById("cam").click(); }
-     if (a === "quitar") { delete fotos[n]; guardarFotos(); pintaFoto(n); }
+     if (a === "quitar") {
+       var arr = lista(n).slice(); arr.splice(parseInt(e.target.getAttribute("data-i"), 10), 1);
+       if (arr.length) fotos[n] = arr; else delete fotos[n];
+       guardarFotos(); pintaFoto(n);
+     }
    });
    document.getElementById("mCap").addEventListener("click", function(){
      document.getElementById("cam").click(); cerrarModal();
@@ -229,8 +238,11 @@
      if (!f || !n) return;
      reducir(f, function(data){
        if (!data) { alert("No se pudo leer la foto."); return; }
-       fotos[n] = data;
-       if (!guardarFotos()) { delete fotos[n]; alert("No hay espacio para guardar más fotos en la app."); }
+       var arr = lista(n).slice(); arr.push(data); fotos[n] = arr;
+       if (!guardarFotos()) {
+         arr.pop(); if (arr.length) fotos[n] = arr; else delete fotos[n];
+         alert("No hay espacio para guardar más fotos en la app.");
+       }
        pintaFoto(n);
      });
      e.target.value = "";
@@ -250,7 +262,7 @@
        if (v === "incorrecto" || v === "seguimiento") {
          puntos.push({
            cab: it.n + " " + it.t + " - " + (v === "incorrecto" ? "INCORRECTO" : "EN SEGUIMIENTO"),
-           foto: fotos[it.n] || null,
+           fotos: lista(it.n),
            color: v === "incorrecto" ? "0.72 0.11 0.11" : "0.7 0.45 0"
          });
        }
