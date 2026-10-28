@@ -105,7 +105,7 @@
    for (var k = 0; k < rs.length; k++) rs[k].checked = false;
    window.DATOS.items.forEach(function(it){ pintaFoto(it.n); });
    lote = ""; try { localStorage.removeItem(KL); } catch(x){}
-   pintaLote(); contar(); window.scrollTo(0, 0); pedirLote();
+   pintaLote(); contar(); window.scrollTo(0, 0);
  }
  var _mc = null;
  function medir(t, size, bold){
@@ -323,6 +323,7 @@
          a.download = nombre; document.body.appendChild(a); a.click(); a.remove();
        }
        reiniciar();
+       location.href = "linea.html?id=" + id;
      } catch (err) {
        var m = String((err && err.message) || err);
        if (!/cancel/i.test(m)) alert("No se pudo generar o enviar el informe: " + m);
