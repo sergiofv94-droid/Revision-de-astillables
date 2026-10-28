@@ -31,20 +31,32 @@
  #modal h2{margin:0 0 8px;font-size:20px;color:#b71c1c}
  #modal p{margin:0 0 16px;font-size:16px}
  #modal button{display:block;width:100%;padding:14px;font-size:17px;font-weight:bold;border-radius:8px;margin-top:10px;border:2px solid #c62828}
+ #mLote{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:30;align-items:center;justify-content:center;padding:20px}
+ #mLote .caja{background:#fff;border-radius:12px;padding:20px;width:100%;max-width:360px}
+ #mLote h2{margin:0 0 12px;font-size:20px;color:#b71c1c}
+ #mLote input{width:100%;box-sizing:border-box;padding:14px;font-size:20px;border:2px solid #bbb;border-radius:8px}
+ #mLote button,#mLote a{display:block;width:100%;box-sizing:border-box;padding:14px;font-size:17px;font-weight:bold;border-radius:8px;margin-top:12px;border:2px solid #c62828;text-align:center;text-decoration:none}
+ #mLoteOk{background:#c62828;color:#fff}
+ #mLoteVolver{background:#fff;color:#c62828}
+ #loteTxt{font-size:14px;margin-top:2px;text-decoration:underline}
  #mCap{background:#c62828;color:#fff}
  #mNo{background:#fff;color:#c62828}
 </style>
 </head>
 <body>
- <header><h1 id="titulo">Revisión</h1><div id="cont"></div></header>
+ <header><h1 id="titulo">Revisión</h1><div id="cont"></div><div id="loteTxt"></div></header>
  <div id="lista"></div>
  <div class="pie"><a class="btn env" id="enviar" href="#">Enviar informe</a><a class="btn" id="volver" href="index.html">← Volver</a></div>
  <input type="file" id="cam" accept="image/*" capture="environment" style="display:none">
+ <div id="mLote"><div class="caja"><h2>Escribe N° OT</h2><input type="text" id="loteIn" inputmode="numeric" maxlength="9" placeholder="00/000000" autocomplete="off"><div id="loteErr" style="color:#c62828;font-size:14px;margin-top:6px;min-height:18px"></div>
+  <button id="mLoteOk">Aceptar</button><a id="mLoteVolver" href="index.html">Volver</a></div></div>
  <div id="modal"><div class="caja"><h2>Capturar fotografía</h2><p id="mTxt"></p>
   <button id="mCap">Capturar fotografía</button><button id="mNo">Ahora no</button></div></div>
  <script>
  var id = new URLSearchParams(location.search).get("id");
- var KEY = "rev_" + id, KF = "revf_" + id, estado = {}, fotos = {}, pend = null;
+ var KEY = "rev_" + id, KF = "revf_" + id, KL = "revl_" + id, estado = {}, fotos = {}, pend = null, lote = "";
+ try { lote = localStorage.getItem(KL) || ""; } catch(e){}
+ if (!/^\d{2}\/\d{6}$/.test(lote)) lote = "";
  try { estado = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch(e){}
  try { fotos = JSON.parse(localStorage.getItem(KF) || "{}"); } catch(e){}
  function guardar(){ try { localStorage.setItem(KEY, JSON.stringify(estado)); } catch(x){} }
@@ -92,7 +104,8 @@
    var rs = document.querySelectorAll("#lista input[type=radio]");
    for (var k = 0; k < rs.length; k++) rs[k].checked = false;
    window.DATOS.items.forEach(function(it){ pintaFoto(it.n); });
-   contar(); window.scrollTo(0, 0);
+   lote = ""; try { localStorage.removeItem(KL); } catch(x){}
+   pintaLote(); contar(); window.scrollTo(0, 0); pedirLote();
  }
  var _mc = null;
  function medir(t, size, bold){
@@ -191,6 +204,29 @@
    return out;
  }
  function bytesToB64(u8){ var s = "", n = 0x8000; for (var i = 0; i < u8.length; i += n) s += String.fromCharCode.apply(null, u8.subarray(i, i + n)); return btoa(s); }
+ function pintaLote(){ document.getElementById("loteTxt").textContent = lote ? "N° OT: " + lote + " (cambiar)" : ""; }
+ function pedirLote(){
+   var inp = document.getElementById("loteIn");
+   inp.value = lote;
+   document.getElementById("mLoteVolver").href = "linea.html?id=" + id;
+   document.getElementById("mLote").style.display = "flex";
+   setTimeout(function(){ inp.focus(); }, 150);
+ }
+ document.getElementById("mLoteOk").addEventListener("click", function(){
+   var v = document.getElementById("loteIn").value.trim();
+   if (!/^\d{2}\/\d{6}$/.test(v)) { document.getElementById("loteErr").textContent = "Escribe el N° OT con el formato 00/000000"; return; }
+   document.getElementById("loteErr").textContent = "";
+   lote = v;
+   try { localStorage.setItem(KL, lote); } catch(e){}
+   document.getElementById("mLote").style.display = "none";
+   pintaLote();
+ });
+ document.getElementById("loteIn").addEventListener("input", function(e){
+   var d = e.target.value.replace(/\D/g, "").slice(0, 8);
+   e.target.value = d.length > 2 ? d.slice(0, 2) + "/" + d.slice(2) : d;
+   document.getElementById("loteErr").textContent = "";
+ });
+ document.getElementById("loteTxt").addEventListener("click", pedirLote);
  var s = document.createElement("script");
  s.src = id + ".js";
  s.onload = function(){
@@ -208,7 +244,8 @@
    });
    document.getElementById("lista").innerHTML = h;
    d.items.forEach(function(it){ pintaFoto(it.n); });
-   contar();
+   contar(); pintaLote();
+   if (!lote) pedirLote();
 
    document.getElementById("lista").addEventListener("change", function(e){
      if (e.target.type !== "radio") return;
@@ -250,6 +287,7 @@
 
    document.getElementById("enviar").addEventListener("click", async function(ev){
      ev.preventDefault();
+     if (!lote) { pedirLote(); return; }
      var tot = d.items.length, sin = tot - Object.keys(estado).length;
      var msg = sin > 0 ? "Quedan " + sin + " puntos sin revisar. ¿Generar el informe en PDF y reiniciar el checklist?" : "¿Generar el informe en PDF y reiniciar el checklist?";
      if (!confirm(msg)) return;
@@ -274,7 +312,7 @@
      var asunto = "Revisión de astillables - " + id;
      var P = (window.Capacitor && window.Capacitor.Plugins) || {};
      try {
-       var bytes = await crearPDF("Revisión de astillables - Línea " + id, "Fecha: " + ahora.toLocaleString("es-ES"),
+       var bytes = await crearPDF("Revisión de astillables - Línea " + id, "N° OT: " + lote + "   -   Fecha: " + ahora.toLocaleString("es-ES"),
          ["Correctos: " + c, "Incorrectos: " + i, "En seguimiento: " + sg, "Sin revisar: " + sin], puntos);
        if (P.Share && P.Filesystem) {
          var r = await P.Filesystem.writeFile({ path: nombre, data: bytesToB64(bytes), directory: "CACHE" });
